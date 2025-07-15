@@ -4,7 +4,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toaster'
-import { validateEmail } from '@/lib/utils'
+import { validateEmail, validateForm } from '@/lib/validators'
 import { LogIn, Mail, Lock, Chrome } from 'lucide-react'
 
 export default function LoginForm() {
@@ -20,27 +20,28 @@ export default function LoginForm() {
   
   const from = location.state?.from?.pathname || '/chat'
 
-  const validateForm = () => {
-    const newErrors: { [key: string]: string } = {}
-    
-    if (!email) {
-      newErrors.email = 'Email is required'
-    } else if (!validateEmail(email)) {
-      newErrors.email = 'Please enter a valid email'
+  const validateLoginForm = () => {
+    const formData = { email, password }
+    const validators = {
+      email: validateEmail,
+      password: (password: string) => ({
+        isValid: !!password,
+        errors: password ? [] : ['Password is required']
+      })
     }
     
-    if (!password) {
-      newErrors.password = 'Password is required'
-    }
+    const result = validateForm(formData, validators)
+    setErrors(Object.fromEntries(
+      Object.entries(result.errors).map(([key, errs]) => [key, errs[0] || ''])
+    ))
     
-    setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    return result.isValid
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!validateForm()) return
+    if (!validateLoginForm()) return
     
     setLoading(true)
     

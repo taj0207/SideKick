@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { collection, query, orderBy, onSnapshot, doc, addDoc, deleteDoc, updateDoc, where } from 'firebase/firestore'
+import { collection, query, orderBy, onSnapshot, doc, addDoc, deleteDoc, updateDoc, where, setDoc } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuth } from './AuthContext'
 import { sendMessage as sendMessageApi, createNewChat as createNewChatApi, handleApiError } from '@/services/api'
@@ -115,54 +115,65 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setLoading(true)
     setError(null)
     
-    // Create optimistic user message
-    const userMessage: Message = {
-      id: generateId(),
-      chatId: currentChat.id,
-      role: 'user',
-      content,
-      timestamp: new Date(),
-      model: 'gpt-4',
-      status: 'sent'
-    }
-    
-    // Add user message to Firestore
-    const userMessageRef = doc(db, 'chats', currentChat.id, 'messages', userMessage.id)
-    await addDoc(collection(db, 'chats', currentChat.id, 'messages'), {
-      ...userMessage,
-      timestamp: userMessage.timestamp
-    })
-    
     try {
-      // Send message to API
-      const response = await sendMessageApi({
+      // Create user message with proper ID generation
+      const userMessageId = generateId()
+      const userMessage: Omit<Message, 'id'> = {
         chatId: currentChat.id,
+        role: 'user',
         content,
-        model: 'gpt-4'
-      })
+        timestamp: new Date(),
+        model: 'gpt-4',
+        status: 'sending'
+      }
       
-      const assistantMessage = response.data.message
+      // Add user message to Firestore atomically
+      const userMessageRef = doc(db, 'chats', currentChat.id, 'messages', userMessageId)
+      await setDoc(userMessageRef, userMessage)
       
-      // Add assistant message to Firestore
-      await addDoc(collection(db, 'chats', currentChat.id, 'messages'), {
-        ...assistantMessage,
-        timestamp: assistantMessage.timestamp
-      })
+      // Update message status to sent
+      await updateDoc(userMessageRef, { status: 'sent' })
       
-      // Update chat's updatedAt timestamp
-      await updateDoc(doc(db, 'chats', currentChat.id), {
-        updatedAt: new Date(),
-        messageCount: messages.length + 2
-      })
+      try {
+        // Send message to API
+        const response = await sendMessageApi({
+          chatId: currentChat.id,
+          content,
+          model: 'gpt-4'
+        })
+        
+        const assistantMessage = response.data.message
+        
+        // Add assistant message to Firestore
+        await addDoc(collection(db, 'chats', currentChat.id, 'messages'), {
+          ...assistantMessage,
+          id: undefined, // Let Firestore generate the ID
+          timestamp: new Date(assistantMessage.timestamp)
+        })
+        
+        // Update chat metadata atomically
+        await updateDoc(doc(db, 'chats', currentChat.id), {
+          updatedAt: new Date(),
+          messageCount: messages.length + 2
+        })
+        
+      } catch (apiError: any) {
+        const errorMessage = handleApiError(apiError)
+        setError(errorMessage)
+        
+        // Update user message status to error
+        await updateDoc(userMessageRef, { status: 'error' })
+        
+        throw apiError
+      }
       
     } catch (error: any) {
-      const errorMessage = handleApiError(error)
-      setError(errorMessage)
-      
-      // Update user message status to error
-      await updateDoc(userMessageRef, {
-        status: 'error'
-      })
+      console.error('Error sending message:', error)
+      if (!error.message?.includes('status')) {
+        // Only set error if it's not already handled above
+        const errorMessage = handleApiError(error)
+        setError(errorMessage)
+      }
     } finally {
       setLoading(false)
     }

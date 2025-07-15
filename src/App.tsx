@@ -1,7 +1,8 @@
 import { Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
 import { ChatProvider } from './contexts/ChatContext'
-import { Toaster } from './components/ui/toaster'
+import { ToastProvider, Toaster } from './components/ui/toaster'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import AuthGuard from './components/auth/AuthGuard'
 import LandingPage from './pages/LandingPage'
 import LoginPage from './pages/LoginPage'
@@ -12,28 +13,45 @@ import './services/firebase'
 
 function App() {
   return (
-    <AuthProvider>
-      <ChatProvider>
+    <ToastProvider>
+      <AuthProvider>
         <div className="min-h-screen bg-background">
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/chat" element={
-              <AuthGuard>
-                <ChatPage />
-              </AuthGuard>
-            } />
-            <Route path="/subscription" element={
-              <AuthGuard>
-                <SubscriptionPage />
-              </AuthGuard>
-            } />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/chat" element={
+                <AuthGuard>
+                  <ErrorBoundary>
+                    <ChatProvider>
+                      <ChatPage />
+                    </ChatProvider>
+                  </ErrorBoundary>
+                </AuthGuard>
+              } />
+              <Route path="/subscription" element={
+                <AuthGuard>
+                  <SubscriptionPage />
+                </AuthGuard>
+              } />
+              <Route path="*" element={
+                <div className="min-h-screen flex items-center justify-center">
+                  <div className="text-center">
+                    <h1 className="text-4xl font-bold mb-4">404</h1>
+                    <p className="text-muted-foreground mb-4">Page not found</p>
+                    <a href="/" className="text-primary hover:underline">
+                      Go back home
+                    </a>
+                  </div>
+                </div>
+              } />
+            </Routes>
+          </ErrorBoundary>
           <Toaster />
         </div>
-      </ChatProvider>
-    </AuthProvider>
+      </AuthProvider>
+    </ToastProvider>
   )
 }
 
