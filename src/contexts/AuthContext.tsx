@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
@@ -6,8 +6,7 @@ import {
   GoogleAuthProvider,
   signOut,
   onAuthStateChanged,
-  updateProfile,
-  User as FirebaseUser
+  updateProfile as updateFirebaseProfile
 } from 'firebase/auth'
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore'
 import { auth, db } from '@/services/firebase'
@@ -47,26 +46,62 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const getUserDocument = async (uid: string): Promise<User> => {
     const userDocRef = doc(db, 'users', uid)
-    const userDoc = await getDoc(userDocRef)
     
-    if (userDoc.exists()) {
-      const data = userDoc.data()
-      return {
-        uid,
-        email: data.email,
-        displayName: data.displayName,
-        photoURL: data.photoURL,
-        createdAt: data.createdAt.toDate(),
-        lastLoginAt: data.lastLoginAt.toDate(),
-        subscription: data.subscription,
-        usage: {
-          ...data.usage,
-          resetDate: data.usage.resetDate.toDate()
+    try {
+      const userDoc = await getDoc(userDocRef)
+      
+      if (userDoc.exists()) {
+        const data = userDoc.data()
+        
+        // Handle potential missing fields gracefully
+        const userData: User = {
+          uid,
+          email: data.email || auth.currentUser?.email || '',
+          displayName: data.displayName || auth.currentUser?.displayName || '',
+          photoURL: data.photoURL || auth.currentUser?.photoURL || undefined,
+          createdAt: data.createdAt ? data.createdAt.toDate() : new Date(),
+          lastLoginAt: data.lastLoginAt ? data.lastLoginAt.toDate() : new Date(),
+          subscription: data.subscription || {
+            plan: 'free',
+            status: 'active',
+            cancelAtPeriodEnd: false
+          },
+          usage: {
+            messagesThisMonth: data.usage?.messagesThisMonth || 0,
+            resetDate: data.usage?.resetDate ? data.usage.resetDate.toDate() : new Date()
+          }
         }
+        
+        return userData
+      } else {
+        // Create new user document
+        const newUser: User = {
+          uid,
+          email: auth.currentUser?.email || '',
+          displayName: auth.currentUser?.displayName || '',
+          photoURL: auth.currentUser?.photoURL || undefined,
+          createdAt: new Date(),
+          lastLoginAt: new Date(),
+          subscription: {
+            plan: 'free',
+            status: 'active',
+            cancelAtPeriodEnd: false
+          },
+          usage: {
+            messagesThisMonth: 0,
+            resetDate: new Date()
+          }
+        }
+        
+        await setDoc(userDocRef, newUser)
+        
+        return newUser
       }
-    } else {
-      // Create new user document
-      const newUser: User = {
+    } catch (error) {
+      console.error('Error getting user document:', error)
+      
+      // Fallback: create minimal user object if document retrieval fails
+      const fallbackUser: User = {
         uid,
         email: auth.currentUser?.email || '',
         displayName: auth.currentUser?.displayName || '',
@@ -84,54 +119,208 @@ export function AuthProvider({ children }: AuthProviderProps) {
         }
       }
       
-      await setDoc(userDocRef, {
-        ...newUser,
-        createdAt: newUser.createdAt,
-        lastLoginAt: newUser.lastLoginAt,
-        usage: {
-          ...newUser.usage,
-          resetDate: newUser.usage.resetDate
-        }
-      })
-      
-      return newUser
+      return fallbackUser
     }
   }
 
   const login = async (credentials: LoginCredentials) => {
-    await signInWithEmailAndPassword(auth, credentials.email, credentials.password)
-    
-    // Update last login time
-    if (auth.currentUser) {
-      const userDocRef = doc(db, 'users', auth.currentUser.uid)
-      await updateDoc(userDocRef, {
-        lastLoginAt: new Date()
-      })
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, credentials.email, credentials.password)
+      
+      // Update last login time (create document if it doesn't exist)
+      if (userCredential.user) {
+        try {
+          const userDocRef = doc(db, 'users', userCredential.user.uid)
+          
+          // Check if document exists first
+          const userDoc = await getDoc(userDocRef)
+          
+          if (userDoc.exists()) {
+            // Document exists, update it
+            await updateDoc(userDocRef, {
+              lastLoginAt: new Date()
+            })
+          } else {
+            // Document doesn't exist, create it
+            console.log('User document not found, creating new one during login')
+            const newUser = {
+              uid: userCredential.user.uid,
+              email: userCredential.user.email || '',
+              displayName: userCredential.user.displayName || '',
+              photoURL: userCredential.user.photoURL || null,
+              createdAt: new Date(),
+              lastLoginAt: new Date(),
+              subscription: {
+                plan: 'free',
+                status: 'active',
+                cancelAtPeriodEnd: false
+              },
+              usage: {
+                messagesThisMonth: 0,
+                resetDate: new Date()
+              }
+            }
+            await setDoc(userDocRef, newUser)
+          }
+        } catch (updateError) {
+          console.warn('Failed to update/create user document during login:', updateError)
+          // Don't fail the login if we can't update the timestamp
+        }
+      }
+    } catch (error: any) {
+      console.error('Login error:', error)
+      
+      // Provide more specific error messages
+      let errorMessage = 'Login failed'
+      
+      switch (error.code) {
+        case 'auth/user-not-found':
+          errorMessage = 'No account found with this email address'
+          break
+        case 'auth/wrong-password':
+          errorMessage = 'Incorrect password'
+          break
+        case 'auth/invalid-email':
+          errorMessage = 'Invalid email address'
+          break
+        case 'auth/user-disabled':
+          errorMessage = 'This account has been disabled'
+          break
+        case 'auth/too-many-requests':
+          errorMessage = 'Too many failed attempts. Please try again later'
+          break
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error. Please check your connection'
+          break
+        default:
+          errorMessage = error.message || 'Login failed'
+      }
+      
+      throw new Error(errorMessage)
     }
   }
 
   const register = async (credentials: RegisterCredentials) => {
-    const { user: firebaseUser } = await createUserWithEmailAndPassword(
-      auth,
-      credentials.email,
-      credentials.password
-    )
-    
-    await updateProfile(firebaseUser, {
-      displayName: credentials.displayName
-    })
+    try {
+      const { user: firebaseUser } = await createUserWithEmailAndPassword(
+        auth,
+        credentials.email,
+        credentials.password
+      )
+      
+      // Update Firebase Auth profile
+      await updateFirebaseProfile(firebaseUser, {
+        displayName: credentials.displayName
+      })
+      
+      // Create user document in Firestore immediately
+      const userDocRef = doc(db, 'users', firebaseUser.uid)
+      const newUser = {
+        uid: firebaseUser.uid,
+        email: credentials.email,
+        displayName: credentials.displayName,
+        photoURL: null,
+        createdAt: new Date(),
+        lastLoginAt: new Date(),
+        subscription: {
+          plan: 'free',
+          status: 'active',
+          cancelAtPeriodEnd: false
+        },
+        usage: {
+          messagesThisMonth: 0,
+          resetDate: new Date()
+        }
+      }
+      
+      await setDoc(userDocRef, newUser)
+      console.log('User document created successfully')
+      
+    } catch (error: any) {
+      console.error('Registration error:', error)
+      
+      // Clean up: if user was created but document creation failed, try to delete the auth user
+      if (auth.currentUser && error.message.includes('Firestore')) {
+        try {
+          await auth.currentUser.delete()
+          console.log('Cleaned up auth user after Firestore error')
+        } catch (cleanupError) {
+          console.error('Failed to cleanup auth user:', cleanupError)
+        }
+      }
+      
+      // Provide specific error messages
+      let errorMessage = 'Registration failed'
+      
+      switch (error.code) {
+        case 'auth/email-already-in-use':
+          errorMessage = 'An account with this email already exists'
+          break
+        case 'auth/invalid-email':
+          errorMessage = 'Invalid email address'
+          break
+        case 'auth/weak-password':
+          errorMessage = 'Password is too weak'
+          break
+        case 'auth/network-request-failed':
+          errorMessage = 'Network error. Please check your connection'
+          break
+        default:
+          errorMessage = error.message || 'Registration failed'
+      }
+      
+      throw new Error(errorMessage)
+    }
   }
 
   const loginWithGoogle = async () => {
-    const provider = new GoogleAuthProvider()
-    await signInWithPopup(auth, provider)
-    
-    // Update last login time
-    if (auth.currentUser) {
-      const userDocRef = doc(db, 'users', auth.currentUser.uid)
-      await updateDoc(userDocRef, {
-        lastLoginAt: new Date()
-      })
+    try {
+      const provider = new GoogleAuthProvider()
+      const userCredential = await signInWithPopup(auth, provider)
+      
+      // Update last login time (create document if it doesn't exist)
+      if (userCredential.user) {
+        try {
+          const userDocRef = doc(db, 'users', userCredential.user.uid)
+          
+          // Check if document exists first
+          const userDoc = await getDoc(userDocRef)
+          
+          if (userDoc.exists()) {
+            // Document exists, update it
+            await updateDoc(userDocRef, {
+              lastLoginAt: new Date()
+            })
+          } else {
+            // Document doesn't exist, create it
+            console.log('User document not found, creating new one during Google login')
+            const newUser = {
+              uid: userCredential.user.uid,
+              email: userCredential.user.email || '',
+              displayName: userCredential.user.displayName || '',
+              photoURL: userCredential.user.photoURL || null,
+              createdAt: new Date(),
+              lastLoginAt: new Date(),
+              subscription: {
+                plan: 'free',
+                status: 'active',
+                cancelAtPeriodEnd: false
+              },
+              usage: {
+                messagesThisMonth: 0,
+                resetDate: new Date()
+              }
+            }
+            await setDoc(userDocRef, newUser)
+          }
+        } catch (updateError) {
+          console.warn('Failed to update/create user document during Google login:', updateError)
+          // Don't fail the login if we can't update the timestamp
+        }
+      }
+    } catch (error: any) {
+      console.error('Google login error:', error)
+      throw error // Re-throw to let the UI handle the error
     }
   }
 

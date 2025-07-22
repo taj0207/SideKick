@@ -9,21 +9,27 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "shell": "npm run build && firebase functions:shell",
     "start": "npm run shell",
-    "deploy": "firebase deploy --only functions",
+    "deploy": "npm run build && firebase deploy --only functions",
+    "deploy:debug": "firebase deploy --only functions --debug",
     "logs": "firebase functions:log"
   },
   "engines": {
-    "node": "18"
+    "node": "20"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "cors": "^2.8.5",
     "firebase-admin": "^11.10.1",
-    "firebase-functions": "^4.4.1",
-    "openai": "^4.2.0",
-    "stripe": "^13.5.0",
-    "cors": "^2.8.5"
+    "firebase-functions": "^6.4.0",
+    "mammoth": "^1.9.1",
+    "node-xlsx": "^0.24.0",
+    "openai": "^5.10.1",
+    "pdf-parse": "^1.1.1",
+    "stripe": "^13.5.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.13",
+    "@types/pdf-parse": "^1.1.5",
     "typescript": "^5.1.6"
   }
 }

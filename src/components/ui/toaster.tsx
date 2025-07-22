@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode, useCallback, useRef } from 'react'
+import { createContext, useContext, useState, ReactNode, useCallback, useRef } from 'react'
 import { cn } from '@/lib/utils'
 import { X, CheckCircle, AlertCircle, AlertTriangle, Info } from 'lucide-react'
 
@@ -18,6 +18,7 @@ interface Toast {
 
 interface ToastContextType {
   toasts: Toast[]
+  toast: (toast: { title: string; description?: string; type: ToastType; duration?: number }) => string
   addToast: (toast: Omit<Toast, 'id'>) => string
   removeToast: (id: string) => void
   clearAllToasts: () => void
@@ -82,8 +83,12 @@ export function ToastProvider({ children, maxToasts = 5 }: ToastProviderProps) {
     setToasts([])
   }, [])
 
+  const toast = useCallback((toast: { title: string; description?: string; type: ToastType; duration?: number }) => {
+    return addToast(toast)
+  }, [addToast])
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast, clearAllToasts }}>
+    <ToastContext.Provider value={{ toasts, toast, addToast, removeToast, clearAllToasts }}>
       {children}
     </ToastContext.Provider>
   )
@@ -212,11 +217,11 @@ export const toast = {
   }),
   
   promise: <T,>(
-    promise: Promise<T>,
+    _promise: Promise<T>,
     {
-      loading,
-      success,
-      error
+      loading: _loading,
+      success: _success,
+      error: _error
     }: {
       loading: string
       success: string | ((data: T) => string)
@@ -225,7 +230,7 @@ export const toast = {
   ) => {
     return {
       type: 'info' as const,
-      title: loading,
+      title: _loading,
       duration: 0 // Don't auto-dismiss loading toasts
     }
   }

@@ -1,7 +1,40 @@
 {
   "permissions": {
     "allow": [
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(npm install)",
+      "Bash(npm install:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm run build:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(firebase use:*)",
+      "Bash(firebase functions:config:get:*)",
+      "Bash(firebase functions:log:*)",
+      "Bash(rm:*)",
+      "Bash(firebase functions:list:*)",
+      "Bash(npm run deploy:*)",
+      "Bash(gcloud auth:*)",
+      "Bash(gcloud functions deploy:*)",
+      "Bash(firebase projects:list:*)",
+      "Bash(npx firebase-tools deploy:*)",
+      "Bash(Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass)",
+      "Bash(curl:*)",
+      "Bash(cmd /c \"firebase deploy --only functions\")",
+      "Bash(npm run:*)",
+      "Bash(where bash)",
+      "Bash(powershell:*)",
+      "Bash(timeout:*)",
+      "Bash(gcloud config set:*)",
+      "Bash(gcloud services enable:*)",
+      "Bash(gcloud app:*)",
+      "Bash(gcloud functions:*)",
+      "Bash(set SHELL=cmd)",
+      "Bash(where git)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(firebase:*)",
+      "Bash(where firebase)"
     ],
     "deny": []
   }

@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app'
 import { getAuth, connectAuthEmulator } from 'firebase/auth'
 import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore'
 import { getFunctions, connectFunctionsEmulator } from 'firebase/functions'
+import { getStorage, connectStorageEmulator } from 'firebase/storage'
 
 // Firebase configuration - replace with actual values
 const firebaseConfig = {
@@ -20,16 +21,32 @@ const app = initializeApp(firebaseConfig)
 export const auth = getAuth(app)
 export const db = getFirestore(app)
 export const functions = getFunctions(app)
+export const storage = getStorage(app)
 
 // Connect to emulators in development
-if (import.meta.env.DEV) {
+if (import.meta.env.DEV && import.meta.env.VITE_USE_EMULATORS === 'true') {
   try {
-    connectAuthEmulator(auth, 'http://localhost:9099')
-    connectFirestoreEmulator(db, 'localhost', 8080)
+    // Check if emulator is running before connecting
+    if (!auth.currentUser) { // Only connect if not already connected
+      connectAuthEmulator(auth, 'http://localhost:9099')
+      console.log('Connected to Auth emulator')
+    }
+    
+    // Check if Firestore emulator connection exists
+    if (!(db as any)._delegate._databaseId.projectId.includes('demo-')) {
+      connectFirestoreEmulator(db, 'localhost', 8080)
+      console.log('Connected to Firestore emulator')
+    }
+    
     connectFunctionsEmulator(functions, 'localhost', 5001)
+    connectStorageEmulator(storage, 'localhost', 9199)
+    console.log('Connected to Firebase emulators')
   } catch (error) {
-    console.log('Firebase emulators not available or already connected')
+    console.warn('Firebase emulators not available or already connected:', error)
+    console.log('Using production Firebase services')
   }
+} else {
+  console.log('Using production Firebase services')
 }
 
 export default app

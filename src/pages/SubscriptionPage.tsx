@@ -1,16 +1,53 @@
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/contexts/AuthContext'
 import { Button } from '@/components/ui/button'
-import { ArrowLeft, Check, Crown } from 'lucide-react'
+import { useToast } from '@/components/ui/toaster'
+import { ArrowLeft, Check, Crown, Loader2, ExternalLink } from 'lucide-react'
 import { SUBSCRIPTION_PLANS } from '@/types/subscription'
+import { createSubscription, getBillingPortal } from '@/services/api'
+import { useState } from 'react'
 
 export default function SubscriptionPage() {
   const { user } = useAuth()
+  const { toast } = useToast()
+  const [loading, setLoading] = useState<string | null>(null)
   const currentPlan = user?.subscription.plan || 'free'
 
-  const handleUpgrade = (priceId: string) => {
-    // This will be implemented when we add Stripe integration
-    console.log('Upgrading to:', priceId)
+  const handleUpgrade = async (priceId: string) => {
+    if (!priceId) return
+    
+    setLoading(priceId)
+    try {
+      const response = await createSubscription({ priceId })
+      // Redirect to Stripe Checkout
+      window.location.href = response.data.url
+    } catch (error: any) {
+      console.error('Error creating subscription:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to start subscription process',
+        type: 'error'
+      })
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  const handleManageBilling = async () => {
+    setLoading('billing')
+    try {
+      const response = await getBillingPortal()
+      window.open(response.data.url, '_blank')
+    } catch (error: any) {
+      console.error('Error opening billing portal:', error)
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to open billing portal',
+        type: 'error'
+      })
+    } finally {
+      setLoading(null)
+    }
   }
 
   return (
@@ -76,17 +113,38 @@ export default function SubscriptionPage() {
               </ul>
               
               {currentPlan === plan.id ? (
-                <Button disabled className="w-full">
-                  Current Plan
-                </Button>
+                <div className="space-y-2">
+                  <Button disabled className="w-full">
+                    Current Plan
+                  </Button>
+                  {currentPlan !== 'free' && (
+                    <Button
+                      onClick={handleManageBilling}
+                      variant="outline"
+                      size="sm"
+                      className="w-full"
+                      disabled={loading === 'billing'}
+                    >
+                      {loading === 'billing' ? (
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      ) : (
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                      )}
+                      Manage Billing
+                    </Button>
+                  )}
+                </div>
               ) : (
                 <Button
                   onClick={() => handleUpgrade(plan.stripePriceId)}
                   className="w-full"
                   variant={plan.popular ? 'default' : 'outline'}
-                  disabled={!plan.stripePriceId}
+                  disabled={!plan.stripePriceId || loading === plan.stripePriceId}
                 >
-                  {plan.price === 0 ? 'Current Plan' : 'Upgrade Now'}
+                  {loading === plan.stripePriceId ? (
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  ) : null}
+                  {plan.price === 0 ? 'Downgrade' : 'Upgrade Now'}
                 </Button>
               )}
             </div>

@@ -129,7 +129,7 @@ export function withErrorBoundary<P extends object>(
 
 // Hook for programmatic error throwing
 export function useErrorHandler() {
-  return (error: Error, errorInfo?: React.ErrorInfo) => {
+  return (error: Error, _errorInfo?: React.ErrorInfo) => {
     throw error
   }
 }

@@ -1,5 +1,5 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { collection, query, orderBy, onSnapshot, doc, addDoc, deleteDoc, updateDoc, where, setDoc } from 'firebase/firestore'
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { collection, query, orderBy, onSnapshot, doc, addDoc, deleteDoc, updateDoc, where, setDoc, deleteField, increment } from 'firebase/firestore'
 import { db } from '@/services/firebase'
 import { useAuth } from './AuthContext'
 import { sendMessage as sendMessageApi, createNewChat as createNewChatApi, handleApiError } from '@/services/api'
@@ -44,12 +44,15 @@ export function ChatProvider({ children }: ChatProviderProps) {
     )
 
     const unsubscribe = onSnapshot(chatsQuery, (snapshot) => {
-      const chatsData: Chat[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        createdAt: doc.data().createdAt.toDate(),
-        updatedAt: doc.data().updatedAt.toDate()
-      })) as Chat[]
+      const chatsData: Chat[] = snapshot.docs.map(doc => {
+        const data = doc.data()
+        return {
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date()
+        }
+      }) as Chat[]
       
       setChats(chatsData)
       
@@ -87,11 +90,11 @@ export function ChatProvider({ children }: ChatProviderProps) {
     return unsubscribe
   }, [currentChat])
 
-  const createChat = async (): Promise<Chat> => {
+  const createChat = async (data?: { projectId?: string }): Promise<Chat> => {
     if (!user) throw new Error('User not authenticated')
     
     try {
-      const result = await createNewChatApi()
+      const result = await createNewChatApi(data)
       const newChat = result.data as Chat
       setCurrentChat(newChat)
       return newChat
@@ -139,7 +142,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
         const response = await sendMessageApi({
           chatId: currentChat.id,
           content,
-          model: 'gpt-4'
+          model: 'gpt-4o-mini',
+          provider: 'openai'
         })
         
         const assistantMessage = response.data.message
@@ -148,7 +152,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
         await addDoc(collection(db, 'chats', currentChat.id, 'messages'), {
           ...assistantMessage,
           id: undefined, // Let Firestore generate the ID
-          timestamp: new Date(assistantMessage.timestamp)
+          timestamp: assistantMessage.timestamp instanceof Date 
+            ? assistantMessage.timestamp 
+            : new Date()
         })
         
         // Update chat metadata atomically
@@ -181,12 +187,31 @@ export function ChatProvider({ children }: ChatProviderProps) {
 
   const deleteChat = async (chatId: string) => {
     try {
+      // Find the chat to get its projectId before deletion
+      const chatToDelete = chats.find(chat => chat.id === chatId)
+      const projectId = chatToDelete?.projectId
+      
+      console.log(`🗑️ Deleting chat ${chatId} from project: ${projectId || 'No Project'}`)
+      
       await deleteDoc(doc(db, 'chats', chatId))
+      
+      // Update project chat count if chat was in a project
+      if (projectId) {
+        console.log(`📊 Decreasing chatCount for project ${projectId} after deletion`)
+        await updateDoc(doc(db, 'projects', projectId), {
+          chatCount: increment(-1),
+          updatedAt: new Date()
+        })
+      }
       
       if (currentChat?.id === chatId) {
         setCurrentChat(null)
       }
+      
+      console.log(`✅ Chat ${chatId} deleted and project count updated`)
+      
     } catch (error: any) {
+      console.error('❌ Error deleting chat:', error)
       const errorMessage = handleApiError(error)
       setError(errorMessage)
     }
@@ -201,6 +226,71 @@ export function ChatProvider({ children }: ChatProviderProps) {
     } catch (error: any) {
       const errorMessage = handleApiError(error)
       setError(errorMessage)
+    }
+  }
+
+  const updateChatProject = async (chatId: string, projectId: string | null) => {
+    try {
+      // Find the current chat to get its current projectId
+      const currentChat = chats.find(chat => chat.id === chatId)
+      const oldProjectId = currentChat?.projectId || null
+      
+      console.log(`📦 Moving chat ${chatId}:`, {
+        from: oldProjectId || 'No Project',
+        to: projectId || 'No Project',
+        chatTitle: currentChat?.title
+      })
+      
+      // Update the chat's project
+      const updateData: any = {
+        updatedAt: new Date()
+      }
+      
+      if (projectId === null) {
+        updateData.projectId = deleteField()
+      } else {
+        updateData.projectId = projectId
+      }
+      
+      await updateDoc(doc(db, 'chats', chatId), updateData)
+      
+      // Update project chat counts
+      const updatePromises: Promise<void>[] = []
+      
+      // Decrease count from old project
+      if (oldProjectId) {
+        console.log(`📊 Decreasing chatCount for project ${oldProjectId}`)
+        updatePromises.push(
+          updateDoc(doc(db, 'projects', oldProjectId), {
+            chatCount: increment(-1),
+            updatedAt: new Date()
+          })
+        )
+      }
+      
+      // Increase count for new project
+      if (projectId) {
+        console.log(`📊 Increasing chatCount for project ${projectId}`)
+        updatePromises.push(
+          updateDoc(doc(db, 'projects', projectId), {
+            chatCount: increment(1),
+            updatedAt: new Date()
+          })
+        )
+      }
+      
+      // Execute all project updates
+      if (updatePromises.length > 0) {
+        await Promise.all(updatePromises)
+      }
+      
+      console.log(`✅ Chat ${chatId} successfully moved and project counts updated`)
+      
+    } catch (error: any) {
+      console.error('❌ Error updating chat project:', error)
+      const errorMessage = handleApiError(error)
+      setError(errorMessage)
+      throw error
     }
   }
 
@@ -219,6 +309,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
     sendMessage,
     deleteChat,
     updateChatTitle,
+    updateChatProject,
     clearError
   }
 

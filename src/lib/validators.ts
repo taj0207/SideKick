@@ -160,7 +160,7 @@ export function validateForm<T extends Record<string, any>>(
     }
     
     if (result.sanitized !== undefined) {
-      sanitized[field as keyof T] = result.sanitized
+      sanitized[field as keyof T] = result.sanitized as T[keyof T]
     }
   }
   

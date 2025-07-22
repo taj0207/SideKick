@@ -1,33 +1,16 @@
 import * as admin from 'firebase-admin'
-import * as functions from 'firebase-functions'
-import OpenAI from 'openai'
-import Stripe from 'stripe'
-import * as cors from 'cors'
+import { onRequest } from 'firebase-functions/v2/https'
 
 // Initialize Firebase Admin
 admin.initializeApp()
 
-// Initialize OpenAI
-const openai = new OpenAI({
-  apiKey: functions.config().openai.api_key,
-})
+// V2 functions (re-export from modules with V2 names)
+export { createStripeCustomerV2, createSubscriptionV2, handleStripeWebhookV2, getBillingPortalV2 } from './subscription'
+export { createNewChatV2, getChatHistoryV2, deleteChatV2, updateChatTitleV2, getAvailableModelsV2, sendMessageV2 } from './chat'
+export { createProjectV2, getUserProjectsV2, updateProjectV2, deleteProjectV2, getProjectChatsV2 } from './project'
+export { cleanupExpiredFilesV2, manualCleanupExpiredFilesV2, cleanupProjectFilesV2 } from './storage'
 
-// Initialize Stripe
-const stripe = new Stripe(functions.config().stripe.secret_key, {
-  apiVersion: '2023-10-16',
-})
-
-// CORS handler
-const corsHandler = cors({ origin: true })
-
-// Export functions
-export { sendMessage } from './chat'
-export { createStripeCustomer, createSubscription, handleStripeWebhook, getBillingPortal } from './subscription'
-export { createNewChat, getChatHistory, deleteChat, updateChatTitle } from './chat'
-
-// Health check
-export const healthCheck = functions.https.onRequest((request, response) => {
-  corsHandler(request, response, () => {
-    response.json({ status: 'OK', timestamp: new Date().toISOString() })
-  })
+// Health check (V2)
+export const healthCheckV2 = onRequest((request, response) => {
+  response.json({ status: 'OK', timestamp: new Date().toISOString() })
 })

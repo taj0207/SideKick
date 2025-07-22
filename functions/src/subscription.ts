@@ -1,23 +1,31 @@
 import * as admin from 'firebase-admin'
-import * as functions from 'firebase-functions'
+import { onCall, onRequest } from 'firebase-functions/v2/https'
+import { HttpsError } from 'firebase-functions/v2/https'
 import Stripe from 'stripe'
-import * as cors from 'cors'
+import cors from 'cors'
 
-const stripe = new Stripe(functions.config().stripe.secret_key, {
-  apiVersion: '2023-10-16',
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2023-08-16',
 })
 
 const db = admin.firestore()
 const corsHandler = cors({ origin: true })
 
 // Create Stripe customer
-export const createStripeCustomer = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated')
+export const createStripeCustomerV2 = onCall({
+  cors: [
+    'https://sidekick-d87aa.web.app',
+    'https://sidekick-d87aa.firebaseapp.com',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ]
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated')
   }
 
-  const userId = context.auth.uid
-  const { email, name } = data
+  const userId = request.auth.uid
+  const { email, name } = request.data || {}
 
   try {
     // Check if customer already exists
@@ -45,18 +53,25 @@ export const createStripeCustomer = functions.https.onCall(async (data, context)
     return { customerId: customer.id }
   } catch (error) {
     console.error('Error creating Stripe customer:', error)
-    throw new functions.https.HttpsError('internal', 'Failed to create customer')
+    throw new HttpsError('internal', 'Failed to create customer')
   }
 })
 
 // Create subscription checkout session
-export const createSubscription = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated')
+export const createSubscriptionV2 = onCall({
+  cors: [
+    'https://sidekick-d87aa.web.app',
+    'https://sidekick-d87aa.firebaseapp.com',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ]
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated')
   }
 
-  const userId = context.auth.uid
-  const { priceId } = data
+  const userId = request.auth.uid
+  const { priceId } = request.data || {}
 
   try {
     // Get user data
@@ -64,7 +79,7 @@ export const createSubscription = functions.https.onCall(async (data, context) =
     const userData = userDoc.data()
     
     if (!userData) {
-      throw new functions.https.HttpsError('not-found', 'User not found')
+      throw new HttpsError('not-found', 'User not found')
     }
 
     let customerId = userData.subscription.stripeCustomerId
@@ -96,8 +111,8 @@ export const createSubscription = functions.https.onCall(async (data, context) =
         },
       ],
       mode: 'subscription',
-      success_url: `${functions.config().app.url}/subscription?success=true`,
-      cancel_url: `${functions.config().app.url}/subscription?canceled=true`,
+      success_url: `${process.env.APP_URL}/subscription?success=true`,
+      cancel_url: `${process.env.APP_URL}/subscription?canceled=true`,
       metadata: {
         firebaseUID: userId
       }
@@ -109,15 +124,15 @@ export const createSubscription = functions.https.onCall(async (data, context) =
     }
   } catch (error) {
     console.error('Error creating subscription:', error)
-    throw new functions.https.HttpsError('internal', 'Failed to create subscription')
+    throw new HttpsError('internal', 'Failed to create subscription')
   }
 })
 
 // Handle Stripe webhooks
-export const handleStripeWebhook = functions.https.onRequest((request, response) => {
+export const handleStripeWebhookV2 = onRequest((request, response) => {
   corsHandler(request, response, async () => {
     const sig = request.headers['stripe-signature'] as string
-    const endpointSecret = functions.config().stripe.webhook_secret
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET
 
     let event: Stripe.Event
 
@@ -157,30 +172,37 @@ export const handleStripeWebhook = functions.https.onRequest((request, response)
 })
 
 // Get billing portal session
-export const getBillingPortal = functions.https.onCall(async (data, context) => {
-  if (!context.auth) {
-    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated')
+export const getBillingPortalV2 = onCall({
+  cors: [
+    'https://sidekick-d87aa.web.app',
+    'https://sidekick-d87aa.firebaseapp.com',
+    'http://localhost:5173',
+    'http://localhost:3000'
+  ]
+}, async (request) => {
+  if (!request.auth) {
+    throw new HttpsError('unauthenticated', 'User must be authenticated')
   }
 
-  const userId = context.auth.uid
+  const userId = request.auth.uid
 
   try {
     const userDoc = await db.collection('users').doc(userId).get()
     const userData = userDoc.data()
     
     if (!userData?.subscription.stripeCustomerId) {
-      throw new functions.https.HttpsError('not-found', 'No subscription found')
+      throw new HttpsError('not-found', 'No subscription found')
     }
 
     const session = await stripe.billingPortal.sessions.create({
       customer: userData.subscription.stripeCustomerId,
-      return_url: `${functions.config().app.url}/subscription`,
+      return_url: `${process.env.APP_URL}/subscription`,
     })
 
     return { url: session.url }
   } catch (error) {
     console.error('Error creating billing portal session:', error)
-    throw new functions.https.HttpsError('internal', 'Failed to create billing portal session')
+    throw new HttpsError('internal', 'Failed to create billing portal session')
   }
 })
 
@@ -230,7 +252,7 @@ async function handlePaymentFailed(invoice: Stripe.Invoice) {
   
   if (invoice.customer && typeof invoice.customer === 'string') {
     const customer = await stripe.customers.retrieve(invoice.customer)
-    if (customer && !customer.deleted) {
+    if (customer && !customer.deleted && 'metadata' in customer) {
       const firebaseUID = customer.metadata.firebaseUID
       if (firebaseUID) {
         await db.collection('users').doc(firebaseUID).update({

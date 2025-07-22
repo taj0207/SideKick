@@ -1,5 +1,6 @@
 import { Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './contexts/AuthContext'
+import { ProjectProvider } from './contexts/ProjectContext'
 import { ChatProvider } from './contexts/ChatContext'
 import { ToastProvider, Toaster } from './components/ui/toaster'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -24,9 +25,11 @@ function App() {
               <Route path="/chat" element={
                 <AuthGuard>
                   <ErrorBoundary>
-                    <ChatProvider>
-                      <ChatPage />
-                    </ChatProvider>
+                    <ProjectProvider>
+                      <ChatProvider>
+                        <ChatPage />
+                      </ChatProvider>
+                    </ProjectProvider>
                   </ErrorBoundary>
                 </AuthGuard>
               } />

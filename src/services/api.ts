@@ -3,56 +3,77 @@ import { functions } from './firebase'
 import type { SendMessageRequest, SendMessageResponse } from '@/types/chat'
 import type { StripeCheckoutSession } from '@/types/subscription'
 
-// Chat API functions
+// Chat API functions (V2)  
 export const sendMessage = httpsCallable<SendMessageRequest, SendMessageResponse>(
   functions,
-  'sendMessage'
+  'sendMessageV2'
 )
 
 export const getChatHistory = httpsCallable(
   functions,
-  'getChatHistory'
+  'getChatHistoryV2'
 )
 
 export const createNewChat = httpsCallable(
   functions,
-  'createNewChat'
+  'createNewChatV2'
 )
 
 export const deleteChat = httpsCallable(
   functions,
-  'deleteChat'
+  'deleteChatV2'
 )
 
 export const updateChatTitle = httpsCallable(
   functions,
-  'updateChatTitle'
+  'updateChatTitleV2'
 )
 
-// Subscription API functions
+export const getAvailableModels = httpsCallable(
+  functions,
+  'getAvailableModelsV2'
+)
+
+// Project API functions (V2)
+export const createProject = httpsCallable(
+  functions,
+  'createProjectV2'
+)
+
+export const getUserProjects = httpsCallable(
+  functions,
+  'getUserProjectsV2'
+)
+
+export const updateProject = httpsCallable(
+  functions,
+  'updateProjectV2'
+)
+
+export const deleteProject = httpsCallable(
+  functions,
+  'deleteProjectV2'
+)
+
+export const getProjectChats = httpsCallable(
+  functions,
+  'getProjectChatsV2'
+)
+
+// Subscription API functions (V2)
 export const createStripeCustomer = httpsCallable(
   functions,
-  'createStripeCustomer'
+  'createStripeCustomerV2'
 )
 
 export const createSubscription = httpsCallable<{ priceId: string }, StripeCheckoutSession>(
   functions,
-  'createSubscription'
-)
-
-export const cancelSubscription = httpsCallable(
-  functions,
-  'cancelSubscription'
+  'createSubscriptionV2'
 )
 
 export const getBillingPortal = httpsCallable<void, { url: string }>(
   functions,
-  'getBillingPortal'
-)
-
-export const getSubscriptionStatus = httpsCallable(
-  functions,
-  'getSubscriptionStatus'
+  'getBillingPortalV2'
 )
 
 // Error handling helper
